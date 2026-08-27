@@ -4,8 +4,8 @@
   "metadata": { "description": "Claude Code skills for research-engineering workflows" },
   "plugins": [
     {
-      "name": "maestro",
-      "source": "./maestro",
+      "name": "agent-conductor",
+      "source": "./agent-conductor",
       "description": "Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard",
       "strict": false
     }

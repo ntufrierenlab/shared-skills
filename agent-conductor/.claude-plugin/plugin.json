@@ -1,5 +1,5 @@
 {
-  "name": "maestro",
+  "name": "agent-conductor",
   "description": "Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard",
   "version": "0.1.0",
   "author": { "name": "heng" }

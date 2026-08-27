@@ -5,7 +5,7 @@ A collection of Claude Code skills, one directory per skill. Each skill is self-
 
 | Skill | What it does |
 |---|---|
-| [`maestro`](maestro/) | Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard |
+| [`agent-conductor`](agent-conductor/) | Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard |
 
 ## Install
 
@@ -13,7 +13,7 @@ A collection of Claude Code skills, one directory per skill. Each skill is self-
 
 ```
 git clone https://github.com/<you>/shared-skills ~/Courses/shared-skills
-ln -s ~/Courses/shared-skills/maestro ~/.claude/skills/maestro
+ln -s ~/Courses/shared-skills/agent-conductor ~/.claude/skills/agent-conductor
 ```
 
 **One skill, per project:** same symlink into `<project>/.claude/skills/`.
@@ -22,7 +22,7 @@ ln -s ~/Courses/shared-skills/maestro ~/.claude/skills/maestro
 
 ```
 claude plugin marketplace add <you>/shared-skills
-claude plugin install maestro@shared-skills
+claude plugin install agent-conductor@shared-skills
 ```
 
 ## Conventions for adding a skill

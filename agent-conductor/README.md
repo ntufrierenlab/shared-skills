@@ -1,4 +1,4 @@
-# maestro — Claude + Codex orchestrator
+# agent-conductor — Claude + Codex orchestrator
 
 A Claude Code skill that turns the session into the **orchestrator** of a Claude + Codex
 research-engineering loop: plan → implement → review → run → accept, with fixed model roles,
@@ -8,12 +8,12 @@ independent re-computation of result tables. Includes a zero-dependency live HTM
 ## Install
 
 ```
-ln -s ~/Courses/shared-skills/maestro ~/.claude/skills/maestro   # user-wide
+ln -s ~/Courses/shared-skills/agent-conductor ~/.claude/skills/agent-conductor   # user-wide
 # or
-ln -s ~/Courses/shared-skills/maestro <project>/.claude/skills/maestro  # per project
+ln -s ~/Courses/shared-skills/agent-conductor <project>/.claude/skills/agent-conductor  # per project
 ```
 
-Then in Claude Code: `/maestro`.
+Then in Claude Code: `/agent-conductor`.
 
 Requirements: Claude Code CLI, Codex CLI ≥ 0.150 (`npm i -g @openai/codex@latest`), Python ≥ 3.10.
 
