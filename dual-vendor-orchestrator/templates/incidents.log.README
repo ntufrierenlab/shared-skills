@@ -1,0 +1,1 @@
+incidents.log format: <UTC ISO> | <tier> | <model> | <event> | <action taken> | <result>
