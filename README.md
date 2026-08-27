@@ -5,7 +5,7 @@ A collection of Claude Code skills, one directory per skill. Each skill is self-
 
 | Skill | What it does |
 |---|---|
-| [`dual-vendor-orchestrator`](dual-vendor-orchestrator/) | Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard |
+| [`maestro`](maestro/) | Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard |
 
 ## Install
 
@@ -13,7 +13,7 @@ A collection of Claude Code skills, one directory per skill. Each skill is self-
 
 ```
 git clone https://github.com/<you>/shared-skills ~/Courses/shared-skills
-ln -s ~/Courses/shared-skills/dual-vendor-orchestrator ~/.claude/skills/dual-vendor-orchestrator
+ln -s ~/Courses/shared-skills/maestro ~/.claude/skills/maestro
 ```
 
 **One skill, per project:** same symlink into `<project>/.claude/skills/`.
@@ -22,7 +22,7 @@ ln -s ~/Courses/shared-skills/dual-vendor-orchestrator ~/.claude/skills/dual-ven
 
 ```
 claude plugin marketplace add <you>/shared-skills
-claude plugin install dual-vendor-orchestrator@shared-skills
+claude plugin install maestro@shared-skills
 ```
 
 ## Conventions for adding a skill

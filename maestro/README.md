@@ -1,4 +1,4 @@
-# dual-vendor-orchestrator
+# maestro — Claude + Codex orchestrator
 
 A Claude Code skill that turns the session into the **orchestrator** of a Claude + Codex
 research-engineering loop: plan → implement → review → run → accept, with fixed model roles,
@@ -8,12 +8,12 @@ independent re-computation of result tables. Includes a zero-dependency live HTM
 ## Install
 
 ```
-ln -s ~/Courses/shared-skills/dual-vendor-orchestrator ~/.claude/skills/dual-vendor-orchestrator   # user-wide
+ln -s ~/Courses/shared-skills/maestro ~/.claude/skills/maestro   # user-wide
 # or
-ln -s ~/Courses/shared-skills/dual-vendor-orchestrator <project>/.claude/skills/dual-vendor-orchestrator  # per project
+ln -s ~/Courses/shared-skills/maestro <project>/.claude/skills/maestro  # per project
 ```
 
-Then in Claude Code: `/dual-vendor-orchestrator`.
+Then in Claude Code: `/maestro`.
 
 Requirements: Claude Code CLI, Codex CLI ≥ 0.150 (`npm i -g @openai/codex@latest`), Python ≥ 3.10.
 
