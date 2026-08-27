@@ -1,0 +1,13 @@
+{
+  "name": "shared-skills",
+  "owner": { "name": "heng" },
+  "metadata": { "description": "Claude Code skills for research-engineering workflows" },
+  "plugins": [
+    {
+      "name": "dual-vendor-orchestrator",
+      "source": "./dual-vendor-orchestrator",
+      "description": "Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard",
+      "strict": false
+    }
+  ]
+}
