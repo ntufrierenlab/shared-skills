@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import subprocess
 import sys
 import threading
@@ -24,6 +25,7 @@ from scripts.status import (
     cmd_run_set,
     cmd_step_set,
     dashboard_path,
+    decisions_path,
     load,
     main,
     render,
@@ -33,6 +35,14 @@ from scripts.status import (
 )
 
 SESSION = "deadbeef"
+
+
+def _decision_writer(root: str, prefix: str) -> None:
+    for index in range(50):
+        main([
+            "--session", SESSION, "--root", root, "--no-render",
+            "decision", "add", "--by", "codex", "--text", f"{prefix}-{index}",
+        ])
 
 
 @pytest.fixture()
@@ -121,6 +131,23 @@ class TestAgentAddUpdate:
         assert agent["model"] == "sol"
         assert agent["vendor"] == "codex"
 
+    def test_dispatch_metadata_round_trip(self, session_root: str) -> None:
+        cmd_init(SESSION, root=session_root)
+        main([
+            "--session", SESSION, "--root", session_root, "--no-render",
+            "agent", "add", "--id", "review-1", "--role", "reviewer",
+            "--model", "fable", "--vendor", "claude", "--state", "done",
+            "--unblocks", "ship gate", "--provider-session-id", "session-123",
+            "--artifact", "/tmp/review.md", "--stderr", "/tmp/stderr.log",
+            "--exit-code", "0", "--finished", "2026-08-28T00:00:00Z",
+        ])
+        agent = load(SESSION, root=session_root)["agents"][0]
+        assert agent["provider_session_id"] == "session-123"
+        assert agent["artifact"] == "/tmp/review.md"
+        assert agent["exit_code"] == 0
+        assert agent["finished"] == "2026-08-28T00:00:00Z"
+        assert agent["independence_waived"] is False
+
 
 class TestRunSet:
     def test_create_and_update(self) -> None:
@@ -163,6 +190,25 @@ class TestDecisions:
         assert pos_11 < pos_2, "newest decision should appear first in HTML"
         assert ">decision-0<" not in html_str
         assert ">decision-1<" not in html_str
+
+    def test_cli_appends_permanent_audit_log(self, session_root: str) -> None:
+        cmd_init(SESSION, root=session_root)
+        main([
+            "--session", SESSION, "--root", session_root, "--no-render",
+            "decision", "add", "--by", "user", "--text", "waive review",
+            "--independence-waived", "--reason", "reviewer unavailable",
+        ])
+        entries = [
+            json.loads(line)
+            for line in decisions_path(SESSION, root=session_root).read_text(encoding="utf-8").splitlines()
+        ]
+        assert entries == [{
+            "timestamp": entries[0]["timestamp"],
+            "by": "user",
+            "text": "waive review",
+            "independence_waived": True,
+            "reason": "reviewer unavailable",
+        }]
 
 
 class TestQuestions:
@@ -225,6 +271,25 @@ class TestAtomicWrite:
             t.join(timeout=2)
 
         assert errors == [], f"partial reads observed: {errors}"
+
+    def test_concurrent_writers_do_not_lose_decisions(self, session_root: str) -> None:
+        cmd_init(SESSION, root=session_root)
+        context = multiprocessing.get_context("fork")
+        workers = [
+            context.Process(target=_decision_writer, args=(session_root, prefix))
+            for prefix in ("left", "right")
+        ]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=20)
+            assert worker.exitcode == 0
+
+        lines = decisions_path(SESSION, root=session_root).read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 100
+        assert len({json.loads(line)["text"] for line in lines}) == 100
+        data = load(SESSION, root=session_root)
+        assert len(data["decisions"]) == 10
 
 
 class TestHtmlEscaping:
@@ -343,6 +408,28 @@ class TestRenderIdempotent:
         lines1 = [ln for ln in html1.splitlines() if "Rendered at" not in ln]
         lines2 = [ln for ln in html2.splitlines() if "Rendered at" not in ln]
         assert lines1 == lines2
+
+    def test_footer_hides_absolute_source_path(self, tmp_path: Path) -> None:
+        source = tmp_path / "private" / "status.json"
+        html_str = render_html(_empty_status(SESSION), str(source))
+        assert str(tmp_path) not in html_str
+        assert "status.json" in html_str
+
+    def test_agent_artifact_hides_absolute_path(self, tmp_path: Path) -> None:
+        data = _empty_status(SESSION)
+        cmd_agent_add(
+            data,
+            agent_id="a1",
+            role="reviewer",
+            model="fable",
+            vendor="claude",
+            state="done",
+            unblocks="ship",
+            artifact=str(tmp_path / "private" / "review.md"),
+        )
+        html_str = render_html(data, "status.json")
+        assert str(tmp_path) not in html_str
+        assert "review.md" in html_str
 
 
 class TestDarkModeSupport:

@@ -112,7 +112,8 @@ def render_html(data: dict, source_path: str) -> str:
         parts.append('<div class="card"><h2>Agents</h2><div class="table-wrap">')
         parts.append(
             "<table><tr><th>ID</th><th>Role</th><th>Model</th><th>Vendor</th>"
-            "<th>State</th><th>Unblocks</th><th>Started</th></tr>"
+            "<th>State</th><th>Exit</th><th>Finished</th><th>Artifact</th>"
+            "<th>Unblocks</th><th>Started</th></tr>"
         )
         for a in agents:
             parts.append(
@@ -121,6 +122,9 @@ def render_html(data: dict, source_path: str) -> str:
                 f"<td>{_esc(a.get('model', ''))}</td>"
                 f"<td>{_esc(a.get('vendor', ''))}</td>"
                 f"<td>{_esc(a.get('state', ''))}</td>"
+                f"<td>{_esc(a.get('exit_code', ''))}</td>"
+                f"<td>{_esc(a.get('finished', ''))}</td>"
+                f"<td>{_esc(Path(a['artifact']).name if a.get('artifact') else '')}</td>"
                 f"<td>{_esc(a.get('unblocks', ''))}</td>"
                 f"<td>{_esc(a.get('started', ''))}</td></tr>"
             )
@@ -169,7 +173,7 @@ def render_html(data: dict, source_path: str) -> str:
         parts.append("</table></div></div>")
 
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    parts.append(f'<footer>Rendered at {_esc(now_utc)} from {_esc(source_path)}</footer>')
+    parts.append(f'<footer>Rendered at {_esc(now_utc)} from {_esc(Path(source_path).name)}</footer>')
     parts.append("</body></html>")
 
     return "\n".join(parts)

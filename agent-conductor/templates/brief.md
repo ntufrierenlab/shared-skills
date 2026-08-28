@@ -5,7 +5,7 @@ Your implementation will be reviewed by an independent reviewer from a different
 The reviewer checks exactly three things: (1) every item on the acceptance checklist below is
 met; (2) the code is correct — tests pass, no logic errors; (3) there is no obvious waste of
 compute or time. Get it right the first time: run the tests yourself, walk the checklist item by
-item, and report with the checklist marked ✔/✘ plus the test output and the pilot-run output.
+item, and report with the checklist marked ✔/✘ plus the test output and any required pilot output.
 
 ## Objective
 <one paragraph>
@@ -16,11 +16,15 @@ item, and report with the checklist marked ✔/✘ plus the test output and the 
 
 ## Risk tier: <mechanical | infra | semantics>
 
+## Semantic impact
+<what behavior may change; path or diff size may raise but never lower the risk tier>
+
 ## Constraints / rulings (verbatim quotes, never paraphrased)
 <paste>
 
 ## Deliverables
 - code + tests in the same change
-- pilot/ : a real small-scale run with its output
+- pilot/ : required for non-mechanical changes, or when the acceptance contract explicitly asks
+  for one; otherwise write "not required — mechanical change"
 - return.md : checklist ✔/✘ with one line of evidence each, test output, pilot summary, anything
   you could not do (say so plainly — never silently narrow scope)
