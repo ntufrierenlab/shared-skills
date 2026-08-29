@@ -1,12 +1,14 @@
 ---
 name: agent-conductor
-description: Orchestrate a Claude + Codex research-engineering workflow when either Claude Code or Codex is the root session and independent cross-vendor planning, implementation review, experiment monitoring, or result acceptance is required.
+description: Align requirements, then orchestrate a Claude + Codex research-engineering workflow when either Claude Code or Codex is the root session and independent cross-vendor planning, implementation review, experiment monitoring, or result acceptance is required.
 ---
 
 # agent-conductor
 
-Run one five-step workflow: plan → implement → review → run → accept. The current Claude Code or
-Codex root is the only orchestrator. Workers receive bounded briefs and return file artifacts.
+Run one alignment gate followed by the five-step workflow: align → plan → implement → review → run
+→ accept, with lightweight micro-alignment for requirements added mid-flight. The current Claude
+Code or Codex root is the only orchestrator. Workers receive bounded briefs and return file
+artifacts.
 
 ## 0. Authority and independence
 
@@ -52,10 +54,11 @@ Risk routing is semantic:
   ambiguous change stays with Sol regardless of apparent size.
 - A Terra scan is a machine-oriented integrity pass, not judgment review.
 
-## 2. Five steps
+## 2. Alignment gate and five steps
 
 | Step | Shape |
 |---|---|
+| **0 Align** | Root resolves facts → user answers decision-frontier rounds → root summarizes → user confirms |
 | **1 Plan** | Fable draft → Sol red-team once → Fable final → user approves |
 | **2 Implement** | Opus is the Claude implementer; Sol is the default Codex implementer; Terra only for bounded mechanical work |
 | **3 Review** | Opus-written code → Sol; Codex-written code → Fable; independence gate applies |
@@ -69,6 +72,7 @@ Implementation and execution are single-agent steps followed by objective gates.
 
 ```
 <workdir>/agents/<task-id>/
+  intake.md
   plan.md
   brief.md
   return.md
@@ -109,7 +113,102 @@ The root reads summaries and decision points. Workers compress raw logs and larg
 return artifact. If the project maintains a progress log, append dispatch, return, and ruling
 events there in the same turn.
 
-## 4. Planning
+## 4. Alignment and planning
+
+### Step 0: requirement alignment
+
+For every new change or build request that enters this workflow, finish alignment before the first
+planner dispatch or implementation edit. The root conducts the interview; do not outsource user
+decisions to a worker.
+
+1. Copy `templates/intake.md` and preserve the user's request verbatim.
+2. Inspect the repository, available docs, configuration, and other in-scope evidence first. Record
+   relevant facts and do not ask the user to retrieve information the root can obtain safely.
+3. Map the remaining decisions as a dependency tree. Its current **frontier** is every open decision
+   whose prerequisites are already settled. Ask the whole frontier in one numbered round, then wait
+   for the user's answers before recomputing the next frontier.
+4. Record answers verbatim in `intake.md` and in status. If the user explicitly delegates a
+   decision, make the root's recommendation visible first, then record the delegation and apply the
+   recommendation; do not ask the decision again. After recommendations are visible, an explicit
+   instruction to accept them all and proceed without another check also counts as confirmation.
+5. When no material branch remains open, summarize the proposed outcome, in-scope and out-of-scope
+   behavior, constraints, acceptance evidence, and user-owned decisions. Ask the user to confirm
+   that shared contract. Planning may start only after confirmation.
+
+A question is material when its answer could change scope, externally visible behavior,
+compatibility, risk or permissions, the acceptance contract, or a costly design choice. Do not ask
+for reassurance, facts available in the environment, or routine implementation choices the agent
+can safely derive. If the request already settles a branch, record it instead of re-asking it.
+
+Each question includes:
+
+- a short title and the decision required;
+- why the answer changes the work;
+- concrete options and tradeoffs when useful;
+- the root's recommended answer and why it best fits the known constraints.
+
+Questions that depend on an unsettled answer belong to a later round. Independent fact-finding may
+continue while the user considers a round; only dependent questions wait. Keep rounds complete but
+compact, and let the user answer by question number or accept all recommendations. Alignment is not
+complete merely because the agent can make assumptions: the user must answer, explicitly delegate,
+or confirm the summarized contract. If planning or review later exposes a new material decision,
+route it through micro-align below rather than guessing.
+
+If inspection finds no open material decision, skip question rounds and proceed directly to the
+contract summary; never invent filler questions merely to perform the gate.
+
+### Mid-flight requirement deltas (micro-align)
+
+When the user adds or changes a requirement after Step 0, in any phase, the root handles it before
+acting on the delta or allowing affected work through another gate:
+
+1. **Capture.** Append the user's wording verbatim to the intake Delta log with a delta id,
+   timestamp, and current confirmed contract version. The confirmed version does not change while
+   the request is pending.
+2. **Classify by effect, not apparent size.** A `compatible` delta changes no confirmed contract
+   clause and invalidates no costly choice. A `material` delta changes scope, observable behavior,
+   compatibility, risk or permissions, acceptance evidence, or a costly choice. An authority-
+   expanding delta is always material and requires an explicit recorded user ruling before any
+   worker exercises it. A delta is `outgrown` when it changes the desired outcome or cannot fit the
+   limits below. New permissions, tools, credentials, spend, or external side effects are authority
+   expansion. When uncertain, classify upward.
+3. **Route.** Apply a compatible delta at the next safe boundary: update an undispatched brief and,
+   when a plan exists, append the ruling verbatim to Clarifications. Do not ask questions, pause
+   work, increment the contract version, or mutate a running brief. If no later safe boundary
+   remains, surface the unapplied delta before acceptance and either close it with a bounded delta
+   brief or record the user's deferral. For a material delta, stop only affected progression through
+   gates and ask one micro-align frontier round of normally 1–3 currently unblocked questions with
+   recommendations. At most one dependency-unlocking follow-up round is allowed; beyond that, route
+   the affected branch through Step 0 as `outgrown`.
+4. **Resolve.** If the user confirms the amended clauses, update intake and plan, increment the
+   contract version, and rebrief only affected work. If the user rejects or withdraws the delta,
+   keep the prior version and release affected work. Reconfirm only amended clauses, never the
+   entire contract.
+
+A dispatch is affected when the delta touches its acceptance checklist, semantic impact,
+constraints or rulings, or risk tier. Briefs record both their confirmed contract version and any
+pending delta ids. When another delta arrives, recompute the affected set against all pending deltas
+and merge interacting questions into the next frontier instead of opening parallel user rounds.
+Unaffected workers and fact-finding continue. If a foreground worker cannot be paused
+non-destructively, let it finish but quarantine its return; do not kill it merely to pause. A return
+passes no review, run, or acceptance gate when its brief predates an amended clause it depends on.
+The root may release it after proving the amendment is irrelevant, close a bounded gap with a delta
+brief, or rebrief from the current contract.
+
+Apply these phase boundaries:
+
+| Phase | Material-delta gate |
+|---|---|
+| **Plan** | A plan citing a superseded contract version is not approvable; replan from confirmed artifacts. |
+| **Implement** | Dispatch no new affected implementation; quarantine an affected in-flight return. |
+| **Review** | Dispatch no review against a superseded checklist; an in-flight verdict authorizes nothing beyond its cited version. |
+| **Run** | L0 monitoring never stops. Stopping a live run remains a root/user decision based on `max_recoverable_loss`; the delta itself grants no stop authority. |
+| **Accept** | Present no acceptance result against superseded evidence or table definitions; recompute only affected conclusions. |
+
+Record every delta classification, user ruling, quarantine, release, and version increment in
+status and `decisions.log` in the same turn.
+
+### Step 1: planning
 
 Copy `templates/plan.md`. A plan is ready only when it contains:
 
@@ -123,10 +222,11 @@ Sol gets one red-team round: ask for the most likely false assumption, the cheap
 would expose it, and objectives the checklist does not test. Keep that response in the red-team
 appendix; Fable finalizes and the user decides.
 
-When intent is genuinely ambiguous, the planner returns one `questions.md` batch. Relay intent,
-priority, and scope questions to the user verbatim. Resume only a session independently verified as
-resumable; otherwise start a new invocation from the saved plan and answers. A second batch is
-allowed only when the answers create a new fork.
+When a planner discovers a new material decision, it returns `questions.md` rather than guessing.
+The root captures it as a pending delta and routes it through micro-align before planning resumes.
+The planner writes questions for the root to relay; it never addresses the user or assumes an
+answer. Resume only a session independently verified as resumable; otherwise start a new invocation
+from the saved intake, plan, and answers.
 
 ## 5. Implementation and review
 
@@ -243,5 +343,7 @@ Every dispatch, return, ruling, and incident updates status in the same turn. Al
 - "It should be fixed" is not state. Name the active dispatch or say it is not dispatched.
 - Give workers definitions and raw evidence, never the conclusion they are meant to derive.
 - Use assigned machine names.
+- Classify and log a mid-flight user requirement before acting on it or on a worker return it may
+  supersede.
 - A non-zero exit, empty artifact, failed independence gate, or exhausted two-round review is a
   stop condition, not permission to silently fall back.

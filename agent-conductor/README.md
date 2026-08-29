@@ -1,8 +1,9 @@
 # agent-conductor — Claude + Codex orchestrator
 
-A Claude Code or Codex skill for orchestrating a dual-vendor research-engineering loop:
-plan → implement → review → run → accept. It provides cross-vendor review, bounded watchdog
-authority, structured dispatch metadata, and a live HTML dashboard.
+A Claude Code or Codex skill for aligning requirements and orchestrating a dual-vendor
+research-engineering loop: align → plan → implement → review → run → accept. It provides
+lightweight micro-alignment for requirements added mid-flight, cross-vendor review, bounded
+watchdog authority, structured dispatch metadata, and a live HTML dashboard.
 
 ## Install
 
@@ -34,7 +35,7 @@ scripts/dispatch_agent.py     probe / foreground run / optional detached launch 
 scripts/watchdog_l0.py        detection-only L0 watchdog
 scripts/status.py             locked status.json writer
 scripts/render_dashboard.py   status.json → dashboard.html
-templates/                    plan, brief, review, run state, runbook
+templates/                    intake, questions, plan, brief, review, run state, runbook
 tests/                        hermetic pytest suite
 ```
 

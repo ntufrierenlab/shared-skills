@@ -10,6 +10,10 @@ item, and report with the checklist marked ✔/✘ plus the test output and any 
 ## Objective
 <one paragraph>
 
+## Requirement state
+- **Confirmed contract version:** <n>
+- **Pending delta IDs at dispatch:** none | <ids>
+
 ## Acceptance checklist (from the plan — the reviewer grades THIS)
 - [ ] <executable check 1>
 - [ ] <executable check 2>
