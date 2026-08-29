@@ -1,9 +1,10 @@
-"""Hermetic tests for detached dispatch and the detection-only watchdog."""
+"""Hermetic tests for dispatch lifecycles and the detection-only watchdog."""
 
 from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -75,6 +76,45 @@ def _launch_fake(
     return launched, waited, artifact, dispatch_dir
 
 
+def _run_fake(
+    tmp_path: Path,
+    program: str,
+) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    fake = tmp_path / "fake_provider.py"
+    fake.write_text(program, encoding="utf-8")
+    brief = tmp_path / "brief.md"
+    brief.write_text("foreground prompt\n", encoding="utf-8")
+    artifact = tmp_path / "artifact.md"
+    dispatch_dir = tmp_path / "dispatch"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(DISPATCH),
+            "run",
+            "--provider",
+            "fake",
+            "--provider-executable",
+            str(fake),
+            "--role",
+            "reviewer",
+            "--model",
+            "fake-model",
+            "--cwd",
+            str(tmp_path),
+            "--brief",
+            str(brief),
+            "--artifact",
+            str(artifact),
+            "--dispatch-dir",
+            str(dispatch_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result, artifact, dispatch_dir
+
+
 def test_probe_writes_capability_json(tmp_path: Path) -> None:
     env = os.environ.copy()
     env["PATH"] = ""
@@ -89,7 +129,31 @@ def test_probe_writes_capability_json(tmp_path: Path) -> None:
     payload = json.loads((tmp_path / "cli_probe.json").read_text(encoding="utf-8"))
     assert set(payload["providers"]) == {"claude", "codex"}
     for provider in payload["providers"].values():
-        assert {"available", "version", "verified_flags"} <= provider.keys()
+        assert {
+            "available",
+            "version",
+            "verified_flags",
+            "resume_syntax",
+            "resumable",
+        } <= provider.keys()
+
+
+def test_foreground_run_keeps_supervisor_in_same_process(tmp_path: Path) -> None:
+    program = """
+import json
+import sys
+
+prompt = sys.stdin.read()
+print(json.dumps({"result": prompt.upper(), "session_id": "fake-session"}))
+"""
+    completed, artifact, dispatch_dir = _run_fake(tmp_path, program)
+    assert completed.returncode == 0, completed.stderr
+    assert artifact.read_text(encoding="utf-8") == "FOREGROUND PROMPT\n"
+    assert (dispatch_dir / "ready.json").exists()
+    meta = json.loads((dispatch_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["mode"] == "foreground"
+    result = json.loads(completed.stdout)
+    assert result["ok"] is True
 
 
 def test_unknown_codex_role_defaults_to_read_only() -> None:
@@ -177,6 +241,139 @@ print(json.dumps({"result": json.dumps(result), "session_id": "fake-session"}))
     result = json.loads((dispatch_dir / "result.json").read_text(encoding="utf-8"))
     assert result["ok"] is True
     assert result["provider_session_id"] == "fake-session"
+    assert (dispatch_dir / "ready.json").exists()
+
+
+def test_wait_reports_supervisor_lost_across_process_boundaries(tmp_path: Path) -> None:
+    fake = tmp_path / "fake_provider.py"
+    fake.write_text(
+        "import sys, time\nsys.stdin.read()\ntime.sleep(30)\n",
+        encoding="utf-8",
+    )
+    brief = tmp_path / "brief.md"
+    brief.write_text("prompt\n", encoding="utf-8")
+    artifact = tmp_path / "artifact.md"
+    dispatch_dir = tmp_path / "dispatch"
+    launched = subprocess.run(
+        [
+            sys.executable,
+            str(DISPATCH),
+            "launch",
+            "--provider",
+            "fake",
+            "--provider-executable",
+            str(fake),
+            "--role",
+            "reviewer",
+            "--model",
+            "fake-model",
+            "--cwd",
+            str(tmp_path),
+            "--brief",
+            str(brief),
+            "--artifact",
+            str(artifact),
+            "--dispatch-dir",
+            str(dispatch_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert launched.returncode == 0, launched.stderr
+    assert (dispatch_dir / "ready.json").exists()
+    meta = json.loads((dispatch_dir / "meta.json").read_text(encoding="utf-8"))
+    for key in ("supervisor_pid", "provider_pid"):
+        try:
+            os.kill(meta[key], signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    waited = subprocess.run(
+        [
+            sys.executable,
+            str(DISPATCH),
+            "wait",
+            "--dispatch-dir",
+            str(dispatch_dir),
+            "--wait-timeout",
+            "3",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert waited.returncode == 1, waited.stderr
+    result = json.loads(waited.stdout)
+    assert result["failure_kind"] == "supervisor_lost"
+    assert "supervisor_lost" in result["error"]
+
+
+def test_claude_resume_syntax_does_not_prove_session_is_resumable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    invocation_marker = tmp_path / "provider-invoked"
+    claude = tmp_path / "claude"
+    claude.write_text(
+        """#!/usr/bin/env python3
+import pathlib
+import sys
+
+if "--version" in sys.argv:
+    print("fake claude 1.0")
+elif "--help" in sys.argv:
+    print("--model --permission-mode --allowedTools --disallowedTools --restricted "
+          "--tools --output-format --resume stdin")
+else:
+    pathlib.Path(sys.argv[0]).with_name("provider-invoked").touch()
+    print("No conversation found", file=sys.stderr)
+    raise SystemExit(1)
+""",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    brief = tmp_path / "brief.md"
+    brief.write_text("continue from prior evidence\n", encoding="utf-8")
+    artifact = tmp_path / "artifact.md"
+    dispatch_dir = tmp_path / "dispatch"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(DISPATCH),
+            "run",
+            "--provider",
+            "claude",
+            "--provider-executable",
+            str(claude),
+            "--role",
+            "reviewer",
+            "--model",
+            "fable",
+            "--cwd",
+            str(tmp_path),
+            "--brief",
+            str(brief),
+            "--artifact",
+            str(artifact),
+            "--dispatch-dir",
+            str(dispatch_dir),
+            "--resume-session-id",
+            "2282612b-d7b7-4ba0-a749-667b8520f47c",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=os.environ.copy(),
+    )
+    assert completed.returncode == 1, completed.stderr
+    probe = json.loads((dispatch_dir / "probe.json").read_text(encoding="utf-8"))
+    assert probe["resume_syntax"] is True
+    assert probe["resumable"] == "unknown"
+    result = json.loads(completed.stdout)
+    assert result["failure_kind"] == "resume_unverified"
+    assert "continue from the saved brief and artifacts" in result["error"]
+    assert not invocation_marker.exists()
 
 
 def test_implementer_must_write_its_artifact(tmp_path: Path) -> None:

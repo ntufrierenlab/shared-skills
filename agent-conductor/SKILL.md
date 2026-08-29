@@ -78,6 +78,7 @@ Implementation and execution are single-agent steps followed by objective gates.
   dispatch/
     request.json
     probe.json
+    ready.json
     meta.json
     result.json
     stdout.txt
@@ -123,9 +124,9 @@ would expose it, and objectives the checklist does not test. Keep that response 
 appendix; Fable finalizes and the user decides.
 
 When intent is genuinely ambiguous, the planner returns one `questions.md` batch. Relay intent,
-priority, and scope questions to the user verbatim. Resume the provider session when its id is
-available; otherwise start from the saved plan and answers. A second batch is allowed only when the
-answers create a new fork.
+priority, and scope questions to the user verbatim. Resume only a session independently verified as
+resumable; otherwise start a new invocation from the saved plan and answers. A second batch is
+allowed only when the answers create a new fork.
 
 ## 5. Implementation and review
 
@@ -186,22 +187,32 @@ The root records and presents the acceptance result. A non-independent waiver re
 
 ## 8. Dispatch mechanics
 
-Probe, launch, and wait without shell interpolation:
+Probe and dispatch without shell interpolation. In a Codex tool execution environment, use one
+foreground `run` command so the provider remains in the same execution cell for its full lifetime:
 
 ```bash
 python3 scripts/dispatch_agent.py probe --workdir <orchestrator-dir>
-python3 scripts/dispatch_agent.py launch \
+python3 scripts/dispatch_agent.py run \
   --provider <claude|codex> --role <role> --model <model> \
   --cwd <repo> --brief <absolute-brief> --artifact <absolute-artifact> \
   --dispatch-dir <absolute-dispatch-dir>
-python3 scripts/dispatch_agent.py wait --dispatch-dir <absolute-dispatch-dir>
 ```
 
-Use `--resume-session-id` only when probe confirms provider resume support. The wrapper sends the
-brief through stdin, uses argument arrays rather than a shell, applies role-specific Claude tool
-allowlists or Codex sandboxes, filters inherited environment variables, and records structured
-results. It launches a detached supervisor so the worker survives the root's turn. Timeout defaults
-to unlimited; set `--timeout` only as a plan-approved hang guard.
+Detached `launch` plus `wait` is available only when the host is known to preserve child processes
+after the launch command returns. `launch` is successful only after `ready.json` exists. If the
+supervisor exits before `result.json`, `wait` returns `failure_kind=supervisor_lost`; do not keep
+polling or infer that a PID in `meta.json` means the provider started.
+
+Probe reports resume syntax separately from session persistence. `resume_syntax=true` means only
+that the CLI accepts a resume argument; the current syntax-only probe therefore reports
+`resumable=unknown`, not `true`. Treat `unknown` as not resumable and continue with a new invocation
+using the saved brief, answers, and artifacts. Use `--resume-session-id` only if a future or
+provider-specific probe can independently verify the specific session and report `resumable=true`.
+
+The wrapper sends the brief through stdin, uses argument arrays rather than a shell, applies
+role-specific Claude tool allowlists or Codex sandboxes, filters inherited environment variables,
+and records structured results. Timeout defaults to unlimited; set `--timeout` only as a
+plan-approved hang guard.
 
 Read-only roles receive read tools / read-only sandbox. Claude runs in restricted mode so user,
 project, and local settings cannot broaden the role policy; supply each required review command as

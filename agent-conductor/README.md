@@ -2,7 +2,7 @@
 
 A Claude Code or Codex skill for orchestrating a dual-vendor research-engineering loop:
 plan → implement → review → run → accept. It provides cross-vendor review, bounded watchdog
-authority, resumable dispatch metadata, and a live HTML dashboard.
+authority, structured dispatch metadata, and a live HTML dashboard.
 
 ## Install
 
@@ -30,7 +30,7 @@ the Python standard library. tmux is optional and is only an observability backe
 
 ```
 SKILL.md                      orchestration policy
-scripts/dispatch_agent.py     probe / detached launch / wait
+scripts/dispatch_agent.py     probe / foreground run / optional detached launch + wait
 scripts/watchdog_l0.py        detection-only L0 watchdog
 scripts/status.py             locked status.json writer
 scripts/render_dashboard.py   status.json → dashboard.html

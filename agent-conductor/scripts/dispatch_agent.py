@@ -1,4 +1,4 @@
-"""Probe, launch, and wait for detached Claude/Codex worker processes."""
+"""Probe and run Claude/Codex workers, with optional detached supervision."""
 
 from __future__ import annotations
 
@@ -20,6 +20,10 @@ BASE_ENV = {"PATH", "HOME", "USER", "SHELL", "LANG", "TERM", "TMPDIR"}
 COMMON_ENV = {"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE"}
 CLAUDE_READ_TOOLS = ["Read", "Glob", "Grep"]
 CLAUDE_WRITE_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write"]
+
+
+class ResumeUnavailableError(RuntimeError):
+    """Raised when resume syntax exists but the requested session is not verified."""
 
 
 def _now_iso() -> str:
@@ -59,7 +63,14 @@ def _capture(argv: list[str], *, timeout: float = 10) -> subprocess.CompletedPro
 def _probe_provider(provider: str) -> dict[str, Any]:
     executable = shutil.which(provider)
     if executable is None:
-        return {"available": False, "version": None, "executable": None, "verified_flags": []}
+        return {
+            "available": False,
+            "version": None,
+            "executable": None,
+            "verified_flags": [],
+            "resume_syntax": False,
+            "resumable": False,
+        }
 
     try:
         version_result = _capture([executable, "--version"])
@@ -79,6 +90,8 @@ def _probe_provider(provider: str) -> dict[str, Any]:
             "version": None,
             "executable": executable,
             "verified_flags": [],
+            "resume_syntax": False,
+            "resumable": "unknown",
             "probe_error": f"timeout: {exc}",
         }
     candidates = {
@@ -94,7 +107,7 @@ def _probe_provider(provider: str) -> dict[str, Any]:
         "json": "--json" in help_text,
         "output_last_message": "--output-last-message" in help_text or "-o," in help_text,
         "cwd": "--cd" in help_text or "-C," in help_text,
-        "resume": (
+        "resume_syntax": (
             "--resume" in help_text
             if provider == "claude"
             else all(flag in resume_text for flag in ("--model", "--sandbox", "--cd", "--json"))
@@ -106,6 +119,10 @@ def _probe_provider(provider: str) -> dict[str, Any]:
         "version": version,
         "executable": executable,
         "verified_flags": sorted(key for key, value in candidates.items() if value),
+        "resume_syntax": candidates["resume_syntax"],
+        # Help output proves only that the CLI accepts resume syntax. It does not prove
+        # that any session returned by a non-interactive invocation was persisted.
+        "resumable": "unknown" if candidates["resume_syntax"] else False,
         "help_exit_code": help_result.returncode,
         "resume_help_exit_code": resume_result.returncode,
     }
@@ -166,7 +183,7 @@ def _artifact_mode(role: str, override: str | None) -> str:
     return "worker-file" if role == "implementer" else "final-message"
 
 
-def command_launch(args: argparse.Namespace) -> int:
+def _initialize_dispatch(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     cwd = _absolute_existing(args.cwd, directory=True)
     brief = _absolute_existing(args.brief)
     artifact = Path(args.artifact)
@@ -199,32 +216,130 @@ def command_launch(args: argparse.Namespace) -> int:
         "input_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
     }
     _atomic_json(dispatch_dir / "request.json", request)
+    return dispatch_dir, request
+
+
+def _dispatch_meta(
+    request: dict[str, Any], dispatch_dir: Path, *, supervisor_pid: int, mode: str
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "provider": request["provider"],
+        "role": request["role"],
+        "model": request["model"],
+        "mode": mode,
+        "started": _now_iso(),
+        "supervisor_pid": supervisor_pid,
+        "supervisor_pgid": supervisor_pid,
+        "artifact": request["artifact"],
+        "stderr": str(dispatch_dir / "stderr.txt"),
+        "input_hash": request["input_hash"],
+    }
+
+
+def _pid_alive(pid: Any) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        stat_fields = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()
+        if len(stat_fields) > 2 and stat_fields[2] == "Z":
+            return False
+    except OSError:
+        pass
+    return True
+
+
+def _supervisor_lost_result(dispatch_dir: Path) -> dict[str, Any]:
+    result_path = dispatch_dir / "result.json"
+    if result_path.exists():
+        return _read_json(result_path)
+    request = _read_json(dispatch_dir / "request.json")
+    stdout_path = dispatch_dir / "stdout.txt"
+    stderr_path = dispatch_dir / "stderr.txt"
+    if not stdout_path.exists():
+        _atomic_text(stdout_path, "")
+    message = "supervisor_lost: worker supervisor exited before writing result.json"
+    if not stderr_path.exists():
+        _atomic_text(stderr_path, message + "\n")
+    result = {
+        "schema_version": 1,
+        "ok": False,
+        "provider": request["provider"],
+        "model": request["model"],
+        "role": request["role"],
+        "exit_code": None,
+        "timed_out": False,
+        "provider_session_id": None,
+        "artifact": request["artifact"],
+        "stdout": str(stdout_path),
+        "stderr": str(stderr_path),
+        "input_hash": request["input_hash"],
+        "duration_seconds": None,
+        "finished": _now_iso(),
+        "failure_kind": "supervisor_lost",
+        "error": message,
+    }
+    _atomic_json(result_path, result)
+    return result
+
+
+def command_launch(args: argparse.Namespace) -> int:
+    dispatch_dir, request = _initialize_dispatch(args)
+    if args.ready_timeout <= 0:
+        raise ValueError("--ready-timeout must be positive")
 
     env = _safe_env(args.provider if args.provider != "fake" else "codex", args.env_allow)
     supervisor = subprocess.Popen(
         [sys.executable, str(Path(__file__).resolve()), "_run", "--dispatch-dir", str(dispatch_dir)],
-        cwd=str(cwd),
+        cwd=request["cwd"],
         env=env,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
-    meta = {
-        "schema_version": 1,
-        "provider": args.provider,
-        "role": args.role,
-        "model": args.model,
-        "started": _now_iso(),
-        "supervisor_pid": supervisor.pid,
-        "supervisor_pgid": supervisor.pid,
-        "artifact": str(artifact),
-        "stderr": str(dispatch_dir / "stderr.txt"),
-        "input_hash": request["input_hash"],
-    }
+    meta = _dispatch_meta(
+        request, dispatch_dir, supervisor_pid=supervisor.pid, mode="detached"
+    )
     _atomic_json(dispatch_dir / "meta.json", meta)
-    print(json.dumps(meta, ensure_ascii=False))
+
+    ready_path = dispatch_dir / "ready.json"
+    result_path = dispatch_dir / "result.json"
+    deadline = time.monotonic() + args.ready_timeout
+    while not ready_path.exists() and not result_path.exists():
+        if not _pid_alive(supervisor.pid):
+            result = _supervisor_lost_result(dispatch_dir)
+            print(json.dumps(result, ensure_ascii=False))
+            return 1
+        if time.monotonic() >= deadline:
+            print("launch timed out before supervisor readiness", file=sys.stderr)
+            return 2
+        time.sleep(0.05)
+    if result_path.exists() and not ready_path.exists():
+        result = _read_json(result_path)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result.get("ok") else 1
+    print(json.dumps({**meta, "ready": str(ready_path)}, ensure_ascii=False))
     return 0
+
+
+def command_run(args: argparse.Namespace) -> int:
+    """Run the supervisor in the foreground for execution-cell-safe dispatch."""
+    dispatch_dir, request = _initialize_dispatch(args)
+    meta = _dispatch_meta(
+        request, dispatch_dir, supervisor_pid=os.getpid(), mode="foreground"
+    )
+    meta["supervisor_pgid"] = os.getpgrp()
+    _atomic_json(dispatch_dir / "meta.json", meta)
+    exit_code = _supervise(dispatch_dir)
+    print(json.dumps(_read_json(dispatch_dir / "result.json"), ensure_ascii=False))
+    return exit_code
 
 
 def _require_flags(probe: dict[str, Any], required: set[str]) -> None:
@@ -260,7 +375,12 @@ def _provider_command(request: dict[str, Any], probe: dict[str, Any]) -> tuple[l
         if "effort" in probe["verified_flags"] and request.get("effort"):
             command += ["--effort", request["effort"]]
         if resume:
-            _require_flags(probe, {"resume"})
+            _require_flags(probe, {"resume_syntax"})
+            if probe.get("resumable") is not True:
+                raise ResumeUnavailableError(
+                    "resume_session_unverified: CLI syntax is available but session persistence "
+                    "has not been verified; continue from the saved brief and artifacts"
+                )
             command += ["--resume", resume]
         command += ["--restricted", "--permission-mode", "dontAsk"]
         json_output = "output_format" in probe["verified_flags"]
@@ -291,7 +411,12 @@ def _provider_command(request: dict[str, Any], probe: dict[str, Any]) -> tuple[l
     _require_flags(probe, required)
     sandbox = "workspace-write" if request["role"] == "implementer" else "read-only"
     if resume:
-        _require_flags(probe, {"resume"})
+        _require_flags(probe, {"resume_syntax"})
+        if probe.get("resumable") is not True:
+            raise ResumeUnavailableError(
+                "resume_session_unverified: CLI syntax is available but session persistence "
+                "has not been verified; continue from the saved brief and artifacts"
+            )
         command = [executable, "exec", "resume", "-m", request["model"], "-C", request["cwd"]]
         command += ["-s", sandbox, "--json", resume]
     else:
@@ -344,6 +469,7 @@ def _supervise(dispatch_dir: Path) -> int:
     timed_out = False
     provider_session_id: str | None = None
     error: str | None = None
+    failure_kind: str | None = None
     try:
         prompt = Path(request["brief"]).read_text(encoding="utf-8")
         probe = (
@@ -378,6 +504,15 @@ def _supervise(dispatch_dir: Path) -> int:
         )
         meta.update({"provider_pid": process.pid, "provider_pgid": process.pid})
         _atomic_json(meta_path, meta)
+        _atomic_json(
+            dispatch_dir / "ready.json",
+            {
+                "schema_version": 1,
+                "ready_at": _now_iso(),
+                "supervisor_pid": os.getpid(),
+                "provider_pid": process.pid,
+            },
+        )
         timeout = request.get("timeout") or None
         try:
             stdout, stderr = process.communicate(prompt, timeout=timeout)
@@ -404,6 +539,8 @@ def _supervise(dispatch_dir: Path) -> int:
             error = f"provider exited with code {exit_code}"
     except BaseException as exc:
         ok = False
+        if isinstance(exc, ResumeUnavailableError):
+            failure_kind = "resume_unverified"
         error = f"{type(exc).__name__}: {exc}"
         stderr = (stderr + "\n" + error).lstrip()
         _atomic_text(dispatch_dir / "stdout.txt", stdout)
@@ -424,6 +561,7 @@ def _supervise(dispatch_dir: Path) -> int:
         "input_hash": request["input_hash"],
         "duration_seconds": round(time.monotonic() - started_monotonic, 3),
         "finished": _now_iso(),
+        "failure_kind": failure_kind,
         "error": error,
     }
     _atomic_json(dispatch_dir / "result.json", result)
@@ -437,6 +575,17 @@ def command_wait(args: argparse.Namespace) -> int:
     result_path = dispatch_dir / "result.json"
     started = time.monotonic()
     while not result_path.exists():
+        meta_path = dispatch_dir / "meta.json"
+        if meta_path.exists():
+            meta = _read_json(meta_path)
+            if not _pid_alive(meta.get("supervisor_pid")):
+                # Allow a just-exited supervisor one final observation window to publish
+                # result.json before recording an explicit lifecycle failure.
+                time.sleep(min(args.poll_interval, 0.1))
+                if not result_path.exists():
+                    result = _supervisor_lost_result(dispatch_dir)
+                    print(json.dumps(result, ensure_ascii=False))
+                    return 1
         if args.wait_timeout and time.monotonic() - started >= args.wait_timeout:
             print("wait timed out; worker was not cancelled", file=sys.stderr)
             return 2
@@ -446,27 +595,35 @@ def command_wait(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def _add_dispatch_arguments(command: argparse.ArgumentParser) -> None:
+    command.add_argument("--provider", required=True, choices=["claude", "codex", "fake"])
+    command.add_argument("--provider-executable", help=argparse.SUPPRESS)
+    command.add_argument("--role", required=True)
+    command.add_argument("--model", required=True)
+    command.add_argument("--effort", default="high")
+    command.add_argument("--cwd", required=True)
+    command.add_argument("--brief", required=True)
+    command.add_argument("--artifact", required=True)
+    command.add_argument("--dispatch-dir", required=True)
+    command.add_argument("--artifact-mode", choices=["final-message", "worker-file"])
+    command.add_argument("--timeout", type=float, default=0)
+    command.add_argument("--resume-session-id")
+    command.add_argument("--allow-tool", action="append", default=[])
+    command.add_argument("--env-allow", action="append", default=[])
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Detached Claude/Codex worker dispatcher")
+    parser = argparse.ArgumentParser(description="Claude/Codex worker dispatcher")
     sub = parser.add_subparsers(dest="command", required=True)
     probe = sub.add_parser("probe", help="Probe installed provider CLI capabilities")
     probe.add_argument("--workdir", required=True)
 
     launch = sub.add_parser("launch", help="Launch a detached worker supervisor")
-    launch.add_argument("--provider", required=True, choices=["claude", "codex", "fake"])
-    launch.add_argument("--provider-executable", help=argparse.SUPPRESS)
-    launch.add_argument("--role", required=True)
-    launch.add_argument("--model", required=True)
-    launch.add_argument("--effort", default="high")
-    launch.add_argument("--cwd", required=True)
-    launch.add_argument("--brief", required=True)
-    launch.add_argument("--artifact", required=True)
-    launch.add_argument("--dispatch-dir", required=True)
-    launch.add_argument("--artifact-mode", choices=["final-message", "worker-file"])
-    launch.add_argument("--timeout", type=float, default=0)
-    launch.add_argument("--resume-session-id")
-    launch.add_argument("--allow-tool", action="append", default=[])
-    launch.add_argument("--env-allow", action="append", default=[])
+    _add_dispatch_arguments(launch)
+    launch.add_argument("--ready-timeout", type=float, default=45)
+
+    run = sub.add_parser("run", help="Run and wait in one foreground process")
+    _add_dispatch_arguments(run)
 
     wait = sub.add_parser("wait", help="Wait for result.json from a launched worker")
     wait.add_argument("--dispatch-dir", required=True)
@@ -485,6 +642,8 @@ def main(argv: list[str] | None = None) -> int:
             return command_probe(args)
         if args.command == "launch":
             return command_launch(args)
+        if args.command == "run":
+            return command_run(args)
         if args.command == "wait":
             return command_wait(args)
         return _supervise(Path(args.dispatch_dir))
