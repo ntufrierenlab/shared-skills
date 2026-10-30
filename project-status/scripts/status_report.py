@@ -65,12 +65,14 @@ def section(body, title):
 
 
 def first_statement(lines):
-    """First bold line of a 結論 section, else first non-heading line."""
+    """First bold line of a 結論 section, else its first line.
+    Bold labels ending in a colon (「**逐條對照判準：**」) introduce a list, not a verdict; skip them."""
     if not lines:
         return None
     for l in lines:
-        if l.strip().startswith("**"):
-            return l.strip()
+        s = l.strip()
+        if s.startswith("**") and not s.rstrip("*").rstrip().endswith(("：", ":")):
+            return s
     return lines[0].strip()
 
 

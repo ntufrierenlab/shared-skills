@@ -53,3 +53,9 @@ def test_cli_render_writes_atomically(tmp_path):
     p, jobs = make_project(tmp_path)
     r = subprocess.run([sys.executable, str(SCRIPT), "render", "--project", str(p), "--jobs-dir", str(jobs)], capture_output=True, text=True)
     assert r.returncode == 0 and (p / "STATUS.md").exists() and not (p / "STATUS.md.tmp").exists()
+
+
+def test_first_statement_skips_bold_labels():
+    lines = ["判定：成功——E1 在等效界內", "**逐條對照 proposal §成功判準：**", "- a"]
+    assert sr.first_statement(lines) == "判定：成功——E1 在等效界內"
+    assert sr.first_statement(["**Criteria:**", "**判定 fail**"]) == "**判定 fail**"
