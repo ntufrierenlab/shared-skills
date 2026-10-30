@@ -59,3 +59,15 @@ def test_first_statement_skips_bold_labels():
     lines = ["判定：成功——E1 在等效界內", "**逐條對照 proposal §成功判準：**", "- a"]
     assert sr.first_statement(lines) == "判定：成功——E1 在等效界內"
     assert sr.first_statement(["**Criteria:**", "**判定 fail**"]) == "**判定 fail**"
+
+
+def test_render_all_skips_worktrees_and_optouts(tmp_path):
+    root = tmp_path / "Project"
+    for name in ("A", "A-wt", "B-off"):
+        (root / name / "logbook").mkdir(parents=True)
+    (root / "A-wt" / ".git").write_text("gitdir: /x/.git/worktrees/A-wt\n")   # worktree copy
+    (root / "B-off" / ".no-status").touch()
+    sr.main(["render-all", "--root", str(root), "--jobs-dir", str(tmp_path / "jobs")])
+    assert (root / "A" / "STATUS.md").exists()
+    assert not (root / "A-wt" / "STATUS.md").exists()
+    assert not (root / "B-off" / "STATUS.md").exists()

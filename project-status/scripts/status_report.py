@@ -273,9 +273,16 @@ def cmd_render(a):
     print(out)
 
 
+def is_project_root(d):
+    """A real project: has logbook/, is not a git worktree (.git is a file), not opted out."""
+    if not (d / "logbook").is_dir() or (d / ".no-status").exists():
+        return False
+    return not (d / ".git").is_file()
+
+
 def cmd_render_all(a):
     for d in sorted(Path(a.root).iterdir()):
-        if (d / "logbook").is_dir():
+        if is_project_root(d):
             cmd_render(argparse.Namespace(project=d, jobs_dir=a.jobs_dir, recent=a.recent))
 
 

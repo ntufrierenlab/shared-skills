@@ -56,7 +56,9 @@ cat ~/.claude/skills/project-status/templates/instructions-snippet.md >> <repo>/
 cat ~/.claude/skills/project-status/templates/instructions-snippet.md >> <repo>/AGENTS.md
 ```
 
-Hourly render on one node (all projects live on NFS, one cron is enough):
+Hourly render on one node (all projects live on NFS, one cron is enough). `render-all` skips git
+worktree copies (`.git` is a file) and any directory containing a `.no-status` marker, so one
+project yields exactly one STATUS.md:
 
 ```
 0 * * * * python3 /home_nfs/<user>/shared-skills/project-status/scripts/status_report.py render-all --root /home_nfs/<user>/Project >/dev/null 2>&1
