@@ -1,0 +1,5 @@
+[
+  {"label": "<round> 官方 test 中位 SRCC", "file": "runs/R0xx/report/report.json", "key": "summary.srcc.median_S_cand", "fmt": ".4f"},
+  {"label": "<round> 判定", "file": "runs/R0xx/report/report.json", "key": "decision"},
+  {"label": "<round> 完成格數", "glob": "results/R0xx/chains/*/*/fold*/metrics.json", "count_where": {"key": "status", "equals": "passed"}, "of": 30}
+]

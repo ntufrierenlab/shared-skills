@@ -6,6 +6,7 @@ A collection of Claude Code skills, one directory per skill. Each skill is self-
 | Skill | What it does |
 |---|---|
 | [`agent-conductor`](agent-conductor/) | Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard |
+| [`project-status`](project-status/) | Hourly zero-token project progress report: `STATUS.md` rendered from logbook, gpurun job records and `status_sources.json`; root session writes 目標／卡住的事／下一步 via `note` |
 
 ## Install
 

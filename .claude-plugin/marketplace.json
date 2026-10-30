@@ -1,12 +1,22 @@
 {
   "name": "shared-skills",
-  "owner": { "name": "heng" },
-  "metadata": { "description": "Claude Code skills for research-engineering workflows" },
+  "owner": {
+    "name": "heng"
+  },
+  "metadata": {
+    "description": "Claude Code skills for research-engineering workflows"
+  },
   "plugins": [
     {
       "name": "agent-conductor",
       "source": "./agent-conductor",
       "description": "Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard",
+      "strict": false
+    },
+    {
+      "name": "project-status",
+      "source": "./project-status",
+      "description": "Hourly zero-token project progress report (STATUS.md) rendered from logbook, job records and status_sources.json; root session writes judgment fields via note",
       "strict": false
     }
   ]
