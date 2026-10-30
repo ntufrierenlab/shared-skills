@@ -68,4 +68,5 @@ Hourly render on one node (all projects live on NFS, one cron is enough):
 - Editing `STATUS.md` directly → it is overwritten; edit `STATUS.notes.md` via `note`.
 - Summarizing job state in prose ("jobs finished") → the table already shows `DONE:0` vs `DONE:1`.
 - Letting a worker (Sol/Terra/subagent) run `note` → only the root session writes; NFS has no locking.
+- Writing 下一步 from the generic workflow ("then review, then accept") → take it from this round's proposal/runbook; name the gate that actually fires next (GREEN test slipped here: invented a sign-off step that had already passed).
 - Reporting STATUS.md figures as a basis for a proposal → they are unaudited copies; `results.md` after blind recompute is the only admissible source.

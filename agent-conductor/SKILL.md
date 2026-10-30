@@ -34,7 +34,7 @@ Both root hosts are supported:
 | Model | Vendor | Primary roles | Never |
 |---|---|---|---|
 | **Fable 5** | Claude | planning, semantic review/sign-off, acceptance conclusions, escalation advice | mechanical implementation, ship decisions |
-| **Opus 4.6** | Claude | repo-level and algorithmic implementation | planning, review, approval |
+| **Opus** | Claude | repo-level and algorithmic implementation | planning, review, approval |
 | **GPT-5.6 Sol** | Codex | default Codex implementation, planning red-team, review of Claude code, L2 diagnosis, independent recomputation | final conclusions |
 | **GPT-5.6 Terra** | Codex | bounded mechanical implementation, integrity checks, L1 runbook actions, mechanical scans | judgment review, infra or semantic implementation, ambiguous work |
 
