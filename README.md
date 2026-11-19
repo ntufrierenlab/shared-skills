@@ -7,6 +7,7 @@ A collection of Claude Code skills, one directory per skill. Each skill is self-
 |---|---|
 | [`agent-conductor`](agent-conductor/) | Orchestrate a Claude + Codex plan → implement → review → run → accept loop with cross-vendor review, a three-tier experiment watchdog, and a live HTML dashboard |
 | [`project-status`](project-status/) | Hourly zero-token project progress report: `STATUS.md` rendered from logbook, gpurun job records and `status_sources.json`; root session writes 目標／卡住的事／下一步 via `note` |
+| [`launching-experiments`](launching-experiments/) | Run protocol for explog projects on the CPLab cluster: logbook round before launch, ntfy for every finish/failure/stage change (including non-gpurun launchers), STATUS notes, tmux watchers, Accept close-out |
 
 ## Install
 

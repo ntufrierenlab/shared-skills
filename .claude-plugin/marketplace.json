@@ -18,6 +18,12 @@
       "source": "./project-status",
       "description": "Hourly zero-token project progress report (STATUS.md) rendered from logbook, job records and status_sources.json; root session writes judgment fields via note",
       "strict": false
+    },
+    {
+      "name": "launching-experiments",
+      "source": "./launching-experiments",
+      "description": "Run protocol for explog projects on the CPLab cluster: logbook round before launch, ntfy for every finish/failure/stage change (incl. non-gpurun launchers), STATUS notes, tmux watchers, Accept close-out",
+      "strict": false
     }
   ]
 }
